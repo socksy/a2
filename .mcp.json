@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bb-clj": {
+      "type": "http",
+      "url": "http://localhost:8787"
+    }
+  }
+}

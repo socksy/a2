@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Architecture + Sequence Diagram</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1e2030;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Fira Code', 'JetBrains Mono', 'SF Mono', monospace;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #24273a;
+  border-bottom: 1px solid #363a4f;
+  color: #cad3f5;
+  font-size: 13px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.bar button {
+  background: #363a4f;
+  border: 1px solid #494d64;
+  color: #cad3f5;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+.bar button:hover:not(:disabled) { background: #494d64; }
+.bar button:disabled { opacity: 0.3; cursor: default; }
+.counter { color: #6e738d; min-width: 70px; text-align: center; }
+.title { color: #8aadf4; flex: 1; white-space: nowrap; overflow: hidden;
+         text-overflow: ellipsis; }
+.hint { color: #494d64; font-size: 11px; }
+.split-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+.pane { overflow: auto; padding: 16px; }
+#seq-viewer {
+  width: 50%;
+  overflow: auto;
+  border-right: 1px solid #363a4f;
+}
+#seq-inner { transform-origin: top left; }
+#seq-inner svg { display: block; max-width: 100%; height: auto; }
+#arch-viewer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#arch-viewer svg { max-width: 100%; max-height: 100%; }
+.divider {
+  width: 6px;
+  background: #363a4f;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.divider:hover, .divider.active { background: #8aadf4; }
+.zoom-controls {
+  position: sticky;
+  top: 8px;
+  float: right;
+  margin-bottom: -40px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(36, 39, 58, 0.9);
+  border: 1px solid #363a4f;
+  border-radius: 6px;
+}
+.zoom-controls button {
+  background: #363a4f;
+  border: 1px solid #494d64;
+  color: #cad3f5;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zoom-controls button:hover { background: #494d64; }
+.zoom-controls span { color: #6e738d; font-size: 12px; min-width: 40px; text-align: center; }
+.edge-label-text {
+  font-family: 'Fira Code', 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  fill: #24273a;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <button id="prev">&#8592;</button>
+  <span class="counter" id="counter"></span>
+  <button id="next">&#8594;</button>
+  <span class="title" id="title"></span>
+  <span class="hint">arrow keys / click &middot; scroll to zoom sequence</span>
+</div>
+<div class="split-container">
+  <div class="pane" id="seq-viewer">
+    <div class="zoom-controls">
+      <button id="zoom-out">&minus;</button>
+      <span id="zoom-level">100%</span>
+      <button id="zoom-in">+</button>
+    </div>
+    <div id="seq-inner">
+{{SEQ_SVG}}
+    </div>
+  </div>
+  <div class="divider" id="divider"></div>
+  <div class="pane" id="arch-viewer">
+{{ARCH_SVG}}
+  </div>
+</div>
+<script>
+(function() {
+  var D = {{DATA_JSON}};
+  var N = {{N}};
+
+  function qg(s, c) {
+    return s.querySelector('g[class^=' + JSON.stringify(c) + ']');
+  }
+
+  var cur = 0;
+  var archSvg = document.querySelector('#arch-viewer svg');
+  var seqSvg = document.querySelector('#seq-viewer svg');
+  if (!archSvg || !seqSvg) return;
+
+  // Cache architecture edge <g> elements
+  var archCache = {};
+  D.allArchEdges.forEach(function(c) {
+    var g = qg(archSvg, c);
+    if (g) archCache[c] = g;
+  });
+
+  // Thicken edge strokes
+  Object.keys(archCache).forEach(function(c) {
+    var ps = archCache[c].querySelectorAll('path');
+    for (var i = 0; i < ps.length; i++) ps[i].style.strokeWidth = '5';
+  });
+
+  // Create floating edge labels at edge path midpoints
+  var NS = 'http://www.w3.org/2000/svg';
+  Object.keys(D.edgeLabels).forEach(function(c) {
+    var g = archCache[c];
+    if (!g) return;
+    var p = g.querySelector('path');
+    if (!p) return;
+    var len = p.getTotalLength(), mid = len / 2;
+    var pt = p.getPointAtLength(mid);
+    var d = 2;
+    var p1 = p.getPointAtLength(Math.max(0, mid - d));
+    var p2 = p.getPointAtLength(Math.min(len, mid + d));
+    var dx = p2.x - p1.x, dy = p2.y - p1.y;
+    var nm = Math.sqrt(dx * dx + dy * dy) || 1;
+    var nx = -dy / nm, ny = dx / nm;
+    var lx = pt.x + nx * 22, ly = pt.y + ny * 22;
+    var w = document.createElementNS(NS, 'g');
+    w.setAttribute('class', 'floating-label');
+    var t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', lx);
+    t.setAttribute('y', ly);
+    t.setAttribute('class', 'edge-label-text');
+    t.textContent = D.edgeLabels[c];
+    w.appendChild(t);
+    g.appendChild(w);
+    var bb = t.getBBox(), pad = 6;
+    var r = document.createElementNS(NS, 'rect');
+    r.setAttribute('x', bb.x - pad);
+    r.setAttribute('y', bb.y - pad);
+    r.setAttribute('width', bb.width + pad * 2);
+    r.setAttribute('height', bb.height + pad * 2);
+    r.setAttribute('rx', '4');
+    r.setAttribute('fill', '#ed8796');
+    w.insertBefore(r, t);
+  });
+
+  // Cache sequence edge <g> elements
+  var seqCache = {};
+  var allSeqClasses = [];
+  D.seqEdges.forEach(function(edges) {
+    edges.forEach(function(c) {
+      if (!seqCache[c]) {
+        var g = qg(seqSvg, c);
+        if (g) { seqCache[c] = g; allSeqClasses.push(c); }
+      }
+    });
+  });
+  allSeqClasses.forEach(function(c) { seqCache[c].style.opacity = '0.15'; });
+
+  // Cache lock node <path> elements (collected from all frames)
+  var lockPaths = {};
+  var allLockKeys = {};
+  D.frames.forEach(function(f) {
+    (f.locks || []).forEach(function(pair) { allLockKeys[pair[0]] = true; });
+    (f.unlocks || []).forEach(function(p) { allLockKeys[p] = true; });
+  });
+  Object.keys(allLockKeys).forEach(function(p) {
+    var g = qg(archSvg, btoa(p));
+    if (g) {
+      var path = g.querySelector('path');
+      if (path) lockPaths[p] = path;
+    }
+  });
+
+  // Cache cell value <text> elements — each cell is its own <g> with b64 class
+  var cellEls = {};
+  Object.keys(D.initialCells).forEach(function(fp) {
+    var g = qg(archSvg, btoa(fp));
+    if (g) {
+      var t = g.querySelector('text');
+      if (t) cellEls[fp] = t;
+    }
+  });
+
+  // Cache blank table <g> elements (start hidden)
+  var tableEls = {};
+  (D.blankTables || []).forEach(function(tp) {
+    var g = qg(archSvg, btoa(tp));
+    if (g) { tableEls[tp] = g; g.style.opacity = '0'; }
+  });
+
+  // Cache :show node <g> elements (start hidden)
+  var showEls = {};
+  D.frames.forEach(function(f) {
+    (f.show || []).forEach(function(p) {
+      if (!showEls[p]) {
+        var g = qg(archSvg, btoa(p));
+        if (g) { showEls[p] = g; g.style.opacity = '0'; }
+      }
+    });
+  });
+
+  // Start all arch edges hidden
+  D.allArchEdges.forEach(function(c) {
+    if (archCache[c]) archCache[c].style.opacity = '0';
+  });
+
+  function go(f) {
+    if (f < 0 || f >= N) return;
+    cur = f;
+
+    // Replay cumulative state from frame 0 to current
+    var lockState = {};
+    var cellState = {};
+    Object.keys(D.initialCells).forEach(function(k) { cellState[k] = D.initialCells[k]; });
+    var nodeVis = {};
+
+    for (var i = 0; i <= cur; i++) {
+      var frame = D.frames[i];
+      (frame.init || []).forEach(function(pair) { cellState[pair[0]] = pair[1]; });
+      (frame.unlocks || []).forEach(function(p) { delete lockState[p]; });
+      (frame.locks || []).forEach(function(pair) { lockState[pair[0]] = pair[1]; });
+      (frame.cells || []).forEach(function(pair) { cellState[pair[0]] = pair[1]; });
+      (frame.show || []).forEach(function(p) { nodeVis[p] = true; });
+    }
+
+    // Architecture edges: hide all, show active
+    D.allArchEdges.forEach(function(c) {
+      if (archCache[c]) archCache[c].style.opacity = '0';
+    });
+    var ae = D.frames[cur].archEdge;
+    if (ae && archCache[ae]) archCache[ae].style.opacity = '1';
+    (D.frames[cur].extraEdges || []).forEach(function(c) {
+      if (archCache[c]) archCache[c].style.opacity = '1';
+    });
+
+    // Lock fill/stroke
+    Object.keys(lockPaths).forEach(function(p) {
+      var el = lockPaths[p];
+      if (lockState[p]) {
+        el.setAttribute('fill', lockState[p]);
+        el.setAttribute('stroke', lockState[p]);
+      } else {
+        el.setAttribute('fill', 'none');
+        el.setAttribute('stroke', 'none');
+      }
+    });
+
+    // Cell text values
+    Object.keys(cellEls).forEach(function(p) {
+      cellEls[p].textContent = cellState[p] || '';
+    });
+
+    // Table visibility (visible when any cell has non-blank content)
+    Object.keys(tableEls).forEach(function(tp) {
+      var vis = false;
+      Object.keys(cellState).forEach(function(p) {
+        if (p.indexOf(tp + '.') === 0 && cellState[p].trim() !== '') vis = true;
+      });
+      tableEls[tp].style.opacity = vis ? '1' : '0';
+    });
+
+    // Node visibility
+    Object.keys(showEls).forEach(function(p) {
+      showEls[p].style.opacity = nodeVis[p] ? '1' : '0';
+    });
+
+    // Sequence edges: dim all, highlight frames 0..cur
+    allSeqClasses.forEach(function(c) { seqCache[c].style.opacity = '0.15'; });
+    var scrollTarget = null;
+    for (var i = 0; i <= cur; i++) {
+      var edges = D.seqEdges[i] || [];
+      for (var j = 0; j < edges.length; j++) {
+        var g = seqCache[edges[j]];
+        if (g) {
+          g.style.opacity = '1';
+          if (i === cur && !scrollTarget) scrollTarget = g;
+        }
+      }
+    }
+
+    // Auto-scroll sequence pane to current frame
+    if (scrollTarget) {
+      var sp = document.getElementById('seq-viewer');
+      var gr = scrollTarget.getBoundingClientRect();
+      var pr = sp.getBoundingClientRect();
+      var target = gr.top - pr.top + sp.scrollTop - pr.height / 3;
+      sp.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    }
+
+    // Title bar
+    document.getElementById('counter').textContent = (cur + 1) + ' / ' + N;
+    document.getElementById('title').textContent = D.frames[cur].title || '';
+    document.getElementById('prev').disabled = cur === 0;
+    document.getElementById('next').disabled = cur === N - 1;
+    var tc = D.frames[cur].titleColor;
+    var titleEl = document.getElementById('title');
+    var bar = document.querySelector('.bar');
+    if (tc) {
+      titleEl.style.color = tc;
+      bar.style.borderBottomColor = tc;
+    } else {
+      titleEl.style.color = '';
+      bar.style.borderBottomColor = '';
+    }
+  }
+
+  // Navigation
+  document.getElementById('next').onclick = function() { go(cur + 1); };
+  document.getElementById('prev').onclick = function() { go(cur - 1); };
+  document.getElementById('arch-viewer').onclick = function(e) {
+    if (e.target.closest('button')) return;
+    go(cur + 1);
+  };
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(N - 1); }
+  });
+
+  // Draggable divider (15-70%)
+  var divider = document.getElementById('divider');
+  var leftPane = document.getElementById('seq-viewer');
+  var splitCtr = document.querySelector('.split-container');
+  divider.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    divider.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onDrag(e) {
+      var r = splitCtr.getBoundingClientRect();
+      var pct = ((e.clientX - r.left) / r.width) * 100;
+      leftPane.style.width = Math.max(15, Math.min(70, pct)) + '%';
+    }
+    function onDragEnd() {
+      divider.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    }
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', onDragEnd);
+  });
+
+  // Sequence pane zoom
+  var seqInner = document.getElementById('seq-inner');
+  var seqZoom = 1;
+  var zoomLevel = document.getElementById('zoom-level');
+  function setZoom(z) {
+    seqZoom = Math.max(0.25, Math.min(4, z));
+    seqInner.style.transform = 'scale(' + seqZoom + ')';
+    zoomLevel.textContent = Math.round(seqZoom * 100) + '%';
+  }
+  document.getElementById('zoom-in').onclick = function(e) {
+    e.stopPropagation(); setZoom(seqZoom + 0.25);
+  };
+  document.getElementById('zoom-out').onclick = function(e) {
+    e.stopPropagation(); setZoom(seqZoom - 0.25);
+  };
+  document.getElementById('seq-viewer').addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom(seqZoom + (e.deltaY < 0 ? 0.1 : -0.1));
+    }
+  }, { passive: false });
+
+  go(0);
+})();
+</script>
+</body>
+</html>

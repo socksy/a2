@@ -1,0 +1,22 @@
+{:base "base.d2"
+
+ :nodes
+ {:Client  "Client"
+  :API     {:path "Platform.Services.API" :label "api-server"}
+  :DB      {:path "Platform.Storage.DB"   :label "PostgreSQL"}
+  :DB.apps "Platform.Storage.DB.apps"}
+
+ :phases
+ [{:color :blue  :title "Deploy"}
+  {:color :green :title "Create Run"}]
+
+ :init {:DB.apps {:id " " :name " "}}
+
+ :steps
+ [[{:from :Client :to :API :message "POST /apps/my-app/deploy"
+    :type "->>"
+    :set {:DB.apps {:id "a1b2c3d4" :name "my-app"}}}
+   {:from :API :to :DB :message "INSERT apps"
+    :set {:DB.apps {:id "a1b2c3d4" :name "my-app"}}}]
+
+  [{:from :Client :to :API :message "POST /apps/my-app/runs"}]]}

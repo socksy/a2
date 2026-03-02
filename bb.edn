@@ -1,0 +1,14 @@
+{:paths ["src"]
+ :min-bb-version "1.0.0"
+ :deps {com.lambdaisland/launchpad {:mvn/version "0.46.204-alpha"}
+        hiccup/hiccup {:mvn/version "2.0.0-RC3"}}
+ :tasks
+ {generate {:doc "Generate interactive HTML: EDN → D2 → HTML"
+            :requires ([a2.core :as core])
+            :task (apply core/-main *command-line-args*)}
+  dev {:doc "Start Launchpad REPL"
+       :task (do (require '[lambdaisland.launchpad :as lp])
+                 (lp/main {}))}
+  mcp {:doc "Start bb-clj MCP server on port 8787"
+       :task (babashka.tasks/shell {:dir (str (System/getProperty "user.home") "/code/mcp-bb-clj")}
+                                   "bb" "-m" "mcp-bb-clj.core" "8787")}}}
