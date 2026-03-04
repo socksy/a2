@@ -560,9 +560,8 @@
     (println (str "Written: " output-path))))
 
 (defn -main [& args]
-  (let [[input output] args
-        output (or output (str/replace input #"\.[^.]+$" ".html"))]
-    (when-not input
-      (println "Usage: bb generate <input.edn> [output.html]")
-      (System/exit 1))
-    (run input output)))
+  (when-not (first args)
+    (println "Usage: bb generate <input.edn> [output.html]")
+    (System/exit 1))
+  (let [[input output] args]
+    (run input (or output (str/replace input #"\.[^.]+$" ".html")))))
