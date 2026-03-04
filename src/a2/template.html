@@ -138,7 +138,7 @@ body {
   var D = {{DATA_JSON}};
   var N = {{N}};
 
-  function qg(s, c) {
+  function findGroup(s, c) {
     return s.querySelector('g[class^=' + JSON.stringify(c) + ']');
   }
 
@@ -148,22 +148,22 @@ body {
   if (!archSvg || !seqSvg) return;
 
   // Cache architecture edge <g> elements
-  var archCache = {};
+  var archEdges = {};
   D.allArchEdges.forEach(function(c) {
-    var g = qg(archSvg, c);
-    if (g) archCache[c] = g;
+    var g = findGroup(archSvg, c);
+    if (g) archEdges[c] = g;
   });
 
   // Thicken edge strokes
-  Object.keys(archCache).forEach(function(c) {
-    var ps = archCache[c].querySelectorAll('path');
+  Object.keys(archEdges).forEach(function(c) {
+    var ps = archEdges[c].querySelectorAll('path');
     for (var i = 0; i < ps.length; i++) ps[i].style.strokeWidth = '5';
   });
 
   // Create floating edge labels at edge path midpoints
   var NS = 'http://www.w3.org/2000/svg';
   Object.keys(D.edgeLabels).forEach(function(c) {
-    var g = archCache[c];
+    var g = archEdges[c];
     if (!g) return;
     var p = g.querySelector('path');
     if (!p) return;
@@ -197,64 +197,63 @@ body {
   });
 
   // Cache sequence edge <g> elements
-  var seqCache = {};
+  var seqEdges = {};
   var allSeqClasses = [];
   D.seqEdges.forEach(function(edges) {
     edges.forEach(function(c) {
-      if (!seqCache[c]) {
-        var g = qg(seqSvg, c);
-        if (g) { seqCache[c] = g; allSeqClasses.push(c); }
+      if (!seqEdges[c]) {
+        var g = findGroup(seqSvg, c);
+        if (g) { seqEdges[c] = g; allSeqClasses.push(c); }
       }
     });
   });
-  allSeqClasses.forEach(function(c) { seqCache[c].style.opacity = '0.15'; });
+  allSeqClasses.forEach(function(c) { seqEdges[c].style.opacity = '0.15'; });
 
   // Cache lock node <path> elements (collected from all frames)
-  var lockPaths = {};
+  var lockNodes = {};
   var allLockKeys = {};
   D.frames.forEach(function(f) {
     (f.locks || []).forEach(function(pair) { allLockKeys[pair[0]] = true; });
     (f.unlocks || []).forEach(function(p) { allLockKeys[p] = true; });
   });
   Object.keys(allLockKeys).forEach(function(p) {
-    var g = qg(archSvg, btoa(p));
+    var g = findGroup(archSvg, btoa(p));
     if (g) {
       var path = g.querySelector('path');
-      if (path) lockPaths[p] = path;
+      if (path) lockNodes[p] = path;
     }
   });
 
-  // Cache cell value <text> elements — each cell is its own <g> with b64 class
-  var cellEls = {};
+  var cellTexts = {};
   Object.keys(D.initialCells).forEach(function(fp) {
-    var g = qg(archSvg, btoa(fp));
+    var g = findGroup(archSvg, btoa(fp));
     if (g) {
       var t = g.querySelector('text');
-      if (t) cellEls[fp] = t;
+      if (t) cellTexts[fp] = t;
     }
   });
 
-  // Cache blank table <g> elements (start hidden)
-  var tableEls = {};
+  var tableGroups = {};
   (D.blankTables || []).forEach(function(tp) {
-    var g = qg(archSvg, btoa(tp));
-    if (g) { tableEls[tp] = g; g.style.opacity = '0'; }
+    var b = btoa(tp);
+    tableGroups[tp] = archSvg.querySelectorAll('g[class^=' + JSON.stringify(b) + ']');
+    tableGroups[tp].forEach(function(e) { e.style.opacity = '0'; });
   });
 
   // Cache :show node <g> elements (start hidden)
-  var showEls = {};
+  var showNodes = {};
   D.frames.forEach(function(f) {
     (f.show || []).forEach(function(p) {
-      if (!showEls[p]) {
-        var g = qg(archSvg, btoa(p));
-        if (g) { showEls[p] = g; g.style.opacity = '0'; }
+      if (!showNodes[p]) {
+        var g = findGroup(archSvg, btoa(p));
+        if (g) { showNodes[p] = g; g.style.opacity = '0'; }
       }
     });
   });
 
   // Start all arch edges hidden
   D.allArchEdges.forEach(function(c) {
-    if (archCache[c]) archCache[c].style.opacity = '0';
+    if (archEdges[c]) archEdges[c].style.opacity = '0';
   });
 
   function go(f) {
@@ -278,17 +277,17 @@ body {
 
     // Architecture edges: hide all, show active
     D.allArchEdges.forEach(function(c) {
-      if (archCache[c]) archCache[c].style.opacity = '0';
+      if (archEdges[c]) archEdges[c].style.opacity = '0';
     });
     var ae = D.frames[cur].archEdge;
-    if (ae && archCache[ae]) archCache[ae].style.opacity = '1';
+    if (ae && archEdges[ae]) archEdges[ae].style.opacity = '1';
     (D.frames[cur].extraEdges || []).forEach(function(c) {
-      if (archCache[c]) archCache[c].style.opacity = '1';
+      if (archEdges[c]) archEdges[c].style.opacity = '1';
     });
 
     // Lock fill/stroke
-    Object.keys(lockPaths).forEach(function(p) {
-      var el = lockPaths[p];
+    Object.keys(lockNodes).forEach(function(p) {
+      var el = lockNodes[p];
       if (lockState[p]) {
         el.setAttribute('fill', lockState[p]);
         el.setAttribute('stroke', lockState[p]);
@@ -299,31 +298,32 @@ body {
     });
 
     // Cell text values
-    Object.keys(cellEls).forEach(function(p) {
-      cellEls[p].textContent = cellState[p] || '';
+    Object.keys(cellTexts).forEach(function(p) {
+      cellTexts[p].textContent = cellState[p] || '';
     });
 
     // Table visibility (visible when any cell has non-blank content)
-    Object.keys(tableEls).forEach(function(tp) {
+    Object.keys(tableGroups).forEach(function(tp) {
       var vis = false;
       Object.keys(cellState).forEach(function(p) {
         if (p.indexOf(tp + '.') === 0 && cellState[p].trim() !== '') vis = true;
       });
-      tableEls[tp].style.opacity = vis ? '1' : '0';
+      var op = vis ? '1' : '0';
+      tableGroups[tp].forEach(function(e) { e.style.opacity = op; });
     });
 
     // Node visibility
-    Object.keys(showEls).forEach(function(p) {
-      showEls[p].style.opacity = nodeVis[p] ? '1' : '0';
+    Object.keys(showNodes).forEach(function(p) {
+      showNodes[p].style.opacity = nodeVis[p] ? '1' : '0';
     });
 
     // Sequence edges: dim all, highlight frames 0..cur
-    allSeqClasses.forEach(function(c) { seqCache[c].style.opacity = '0.15'; });
+    allSeqClasses.forEach(function(c) { seqEdges[c].style.opacity = '0.15'; });
     var scrollTarget = null;
     for (var i = 0; i <= cur; i++) {
       var edges = D.seqEdges[i] || [];
       for (var j = 0; j < edges.length; j++) {
-        var g = seqCache[edges[j]];
+        var g = seqEdges[edges[j]];
         if (g) {
           g.style.opacity = '1';
           if (i === cur && !scrollTarget) scrollTarget = g;

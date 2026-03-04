@@ -14,8 +14,7 @@
 
  :steps
  [[{:from :Client :to :API :message "POST /apps/my-app/deploy"
-    :type "->>"
-    :set {:DB.apps {:id "a1b2c3d4" :name "my-app"}}}
+    :type "->>"}
    {:from :API :to :DB :message "INSERT apps"
     :set {:DB.apps {:id "a1b2c3d4" :name "my-app"}}}]
 
