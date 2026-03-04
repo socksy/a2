@@ -1,21 +1,24 @@
 {:base "base.d2"
 
  :nodes
- {:Client  "Client"
-  :API     {:path "Platform.Services.API" :label "api-server"}
-  :DB      {:path "Platform.Storage.DB"   :label "PostgreSQL"}
-  :DB.apps "Platform.Storage.DB.apps"}
+ {:Client    "Client"
+  :API       {:path "Platform.Services.API" :label "api-server"}
+  :DB        {:path "Platform.Storage.DB"   :label "PostgreSQL"}
+  :DB.users  "Platform.Storage.DB.users"}
 
  :phases
- [{:color :blue  :title "Deploy"}
-  {:color :green :title "Create Run"}]
+ [{:color :blue  :title "Sign Up"}
+  {:color :green :title "Log In"}]
 
- :init {:DB.apps {:id " " :name " "}}
+ :init {:DB.users {:id " " :email " "}}
 
  :steps
- [[{:from :Client :to :API :message "POST /apps/my-app/deploy"
-    :type "->>"}
-   {:from :API :to :DB :message "INSERT apps"
-    :set {:DB.apps {:id "a1b2c3d4" :name "my-app"}}}]
+ [[{:from :Client :to :API :message "POST /signup"}
+   {:from :API :to :DB :message "INSERT INTO users"
+    :set {:DB.users {:id "u-7f3a" :email "alice@example.com"}}}
+   {:from :API :to :Client :message "201 Created"}]
 
-  [{:from :Client :to :API :message "POST /apps/my-app/runs"}]]}
+  [{:from :Client :to :API :message "POST /login"}
+   {:from :API :to :DB :message "SELECT * FROM users"}
+   {:from :DB :to :API :message "row"}
+   {:from :API :to :Client :message "200 OK + token"}]]}

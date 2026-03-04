@@ -235,9 +235,13 @@ body {
 
   var tableGroups = {};
   (D.blankTables || []).forEach(function(tp) {
-    var b = btoa(tp);
-    tableGroups[tp] = archSvg.querySelectorAll('g[class^=' + JSON.stringify(b) + ']');
-    tableGroups[tp].forEach(function(e) { e.style.opacity = '0'; });
+    var els = [findGroup(archSvg, btoa(tp))];
+    Object.keys(D.initialCells).forEach(function(fp) {
+      if (fp.indexOf(tp + '.') === 0) els.push(findGroup(archSvg, btoa(fp)));
+    });
+    els = els.filter(Boolean);
+    tableGroups[tp] = els;
+    els.forEach(function(e) { e.style.opacity = '0'; });
   });
 
   // Cache :show node <g> elements (start hidden)

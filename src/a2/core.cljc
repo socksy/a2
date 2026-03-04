@@ -274,9 +274,10 @@
                                     (map-indexed (fn [d2-idx e] [(:seq-idx e) d2-idx]))
                                     (into {}))])))))
         seq-edges
-        (mapv (fn [{:keys [src tgt pair seq-idx]}]
-                [(edge-b64 src tgt "->" (get-in pair->remap [pair seq-idx] seq-idx))])
-              raw-edges)]
+        (into [[]]
+          (mapv (fn [{:keys [src tgt pair seq-idx]}]
+                  [(edge-b64 src tgt "->" (get-in pair->remap [pair seq-idx] seq-idx))])
+                raw-edges))]
     {:d2 (str/join "\n"
            (concat
              ["shape: sequence_diagram" ""]
@@ -300,6 +301,11 @@
                (range (count (:phases doc))))))
      :seq-edges seq-edges
      :lock-spans lock-spans}))
+
+(defn- init-frame [doc]
+  (cond-> {:title (get-in doc [:phases 0 :title] "Start")
+           :color (name (get-in doc [:phases 0 :color] :blue))}
+    (:init doc) (assoc :init (:init doc))))
 
 (defn- build-frames
   "Per-arrow frame data for JS interactivity: title, color, edge refs, state changes."
@@ -336,14 +342,12 @@
                  (edge-b64 source-path target-path d2-arrow
                    (get arch-edge-count edge-key 0)))
                (seq extra-b64s) (assoc :extra-edges extra-b64s)
-               (and (zero? (:arrow-idx arrow)) (:init doc))
-               (assoc :init (:init doc))
                (:set arrow)    (assoc :set (:set arrow))
                (:lock arrow)   (assoc :lock (:lock arrow))
                (:unlock arrow) (assoc :unlock (:unlock arrow))
                (:show arrow)   (assoc :show (:show arrow))))
            :arch-edge-count ec}))
-      {:frames [] :arch-edge-count {}}
+      {:frames [(init-frame doc)] :arch-edge-count {}}
       (:arrows doc))))
 
 (defn generate-d2
@@ -436,7 +440,7 @@
 
 (defn d2->svg
   "Shell out to d2 CLI, return SVG string."
-  [d2-text]
+  [d2-text {:keys [layout theme]}]
   (let [fonts @mono-fonts
         in-file (java.io.File/createTempFile "a2-" ".d2")
         out-file (java.io.File/createTempFile "a2-" ".svg")]
@@ -445,7 +449,9 @@
       (.delete out-file)
       (let [{:keys [exit err]}
             @(p/process
-               (-> (cond-> [@d2-bin "--layout=elk" "--theme=200"]
+               (-> (cond-> [@d2-bin
+                            (str "--layout=" (or layout "dagre"))
+                            (str "--theme=" (or theme 200))]
                      fonts (into (mapv #(str "--font-" (name %) "=" (fonts %))
                                        [:regular :bold :italic :semibold])))
                    (conj (.getAbsolutePath in-file) (.getAbsolutePath out-file)))
@@ -532,8 +538,10 @@
       (.replace "{{N}}" (str (count (:frames sync))))))
 
 (defn run [input-path output-path]
-  (let [dir      (some-> (io/file input-path) .getParentFile)
-        doc      (parse (edn/read-string (slurp input-path)))
+  (let [raw      (edn/read-string (slurp input-path))
+        dir      (some-> (io/file input-path) .getParentFile)
+        doc      (parse raw)
+        d2-opts  (select-keys raw [:layout :theme])
         raw-base (slurp (if dir (io/file dir (:base doc)) (:base doc)))
         base     (pad-table-cells raw-base doc)
         {:keys [arch-d2 seq-d2 sync]} (generate-d2 doc base)
@@ -541,8 +549,8 @@
     (when-let [f (:regular @mono-fonts)]
       (binding [*out* *err*] (println (str "Font: " (.getName (io/file f))))))
     (->> (build-html
-           (d2->svg (strip-edge-labels arch-d2))
-           (d2->svg seq-d2)
+           (d2->svg (strip-edge-labels arch-d2) d2-opts)
+           (d2->svg seq-d2 d2-opts)
            (assoc sync
              :edge-map edge-map
              :edge-labels edge-labels
