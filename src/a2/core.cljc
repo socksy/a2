@@ -1,10 +1,15 @@
 (ns a2.core
   (:require [babashka.process :as p]
-            [cheshire.core :as json]
+            #?(:bb [cheshire.core :as json]
+               :clj [clojure.data.json :as json])
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str])
-  (:import [java.util Base64]))
+  (:import [java.util Base64]
+           #?@(:clj [[java.lang ProcessHandle]]))
+  #?(:clj (:gen-class)))
+
+(def ^:private json-str #?(:bb json/generate-string :clj json/write-str))
 
 (defn- node-path [nodes k]
   (if-let [v (get nodes k)]
@@ -420,6 +425,15 @@
               "JetBrainsMono-Bold.ttf"
               "JetBrainsMono-SemiBold.ttf"]]))))
 
+(def ^:private d2-bin
+  (delay
+    #?(:bb "d2"
+       :clj (let [sibling (some-> (ProcessHandle/current) .info .command (.orElse nil)
+                                  io/file .getParentFile (io/file "d2"))]
+               (if (and sibling (.canExecute sibling))
+                 (.getAbsolutePath sibling)
+                 "d2")))))
+
 (defn d2->svg
   "Shell out to d2 CLI, return SVG string."
   [d2-text]
@@ -431,7 +445,7 @@
       (.delete out-file)
       (let [{:keys [exit err]}
             @(p/process
-               (-> (cond-> ["d2" "--layout=elk" "--theme=200"]
+               (-> (cond-> [@d2-bin "--layout=elk" "--theme=200"]
                      fonts (into (mapv #(str "--font-" (name %) "=" (fonts %))
                                        [:regular :bold :italic :semibold])))
                    (conj (.getAbsolutePath in-file) (.getAbsolutePath out-file)))
@@ -513,7 +527,7 @@
   (-> @html-template
       (.replace "{{SEQ_SVG}}" seq-svg)
       (.replace "{{ARCH_SVG}}" arch-svg)
-      (.replace "{{DATA_JSON}}" (str/replace (json/generate-string (sync->js-data sync))
+      (.replace "{{DATA_JSON}}" (str/replace (json-str (sync->js-data sync))
                                              "</" "<\\/"))
       (.replace "{{N}}" (str (count (:frames sync))))))
 

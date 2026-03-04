@@ -1,10 +1,37 @@
-# a2
+# Animated Architecture - a2
 
 Interactive architecture diagrams. Define components and message flows in EDN, get a split-pane HTML viewer with a sequence diagram on the left and an architecture diagram on the right, stepping through in sync.
 
-Uses [D2](https://d2lang.com) for diagram rendering. Written in Clojure, runs with [Babashka](https://babashka.org).
+Uses [D2](https://d2lang.com) for diagram rendering.
+
+## Install
+
+Download the latest archive for your platform from [Releases](https://github.com/benharri/a2/releases), extract it, and put both `a2` and `d2` somewhere on your PATH:
+
+```
+tar xzf a2-macos-arm64.tar.gz
+sudo mv a2 d2 /usr/local/bin/
+```
+
+The archive contains the `a2` native binary and a bundled `d2` — no other dependencies needed.
+
+### Development
+
+To run from source, install [Babashka](https://babashka.org) and [D2](https://d2lang.com), then:
+
+```
+bb generate examples/simple.edn
+```
 
 ## Usage
+
+Each EDN input references a `:base` D2 file that defines the static architecture layout (containers, tables, styles). Edges are generated from your steps automatically.
+
+```
+a2 examples/simple.edn
+```
+
+Or with Babashka:
 
 ```
 bb generate examples/simple.edn

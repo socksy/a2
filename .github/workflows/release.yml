@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-amd64
+            d2-archive: d2-v0.7.1-linux-amd64.tar.gz
+          - os: macos-15
+            platform: macos-arm64
+            d2-archive: d2-v0.7.1-macos-arm64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: "graalvm"
+
+      - uses: DeLaGuardo/setup-clojure@13.0
+        with:
+          cli: latest
+
+      - name: Build uberjar
+        run: clojure -T:build uber
+
+      - name: Build native image
+        run: |
+          native-image \
+            -jar target/a2.jar \
+            -o a2 \
+            -H:ResourceConfigurationFiles=graal/resource-config.json \
+            --no-fallback \
+            --initialize-at-build-time \
+            -H:+ReportExceptionStackTraces
+
+      - name: Download D2
+        run: |
+          curl -fsSL "https://github.com/terrastruct/d2/releases/download/v0.7.1/${{ matrix.d2-archive }}" -o d2.tar.gz
+          tar xzf d2.tar.gz
+          mv d2-v0.7.1/bin/d2 d2
+          chmod +x d2
+
+      - name: Package archive
+        run: tar czf a2-${{ matrix.platform }}.tar.gz a2 d2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a2-${{ matrix.platform }}
+          path: a2-${{ matrix.platform }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: a2-*.tar.gz
+          generate_release_notes: true
