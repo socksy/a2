@@ -487,8 +487,8 @@
                        (remove #(#{"class" "shape" "label" "near"} (nth % 1)))
                        (every? #(str/blank? (nth % 2))))
               table-name)))
-    ;; D2 table blocks: name: { ...class: table... } (single nesting level only)
-    (re-seq #"([\w-]+):[^\n]*\{([^{}]*class:\s*table[^{}]*)\}" base-d2)))
+    ;; D2 table blocks: name: { ...class: table... } or { ...shape: sql_table... }
+    (re-seq #"([\w-]+):[^\n]*\{([^{}]*(?:class:\s*table|shape:\s*sql_table)[^{}]*)\}" base-d2)))
 
 (defn- parse-initial-cell-values [base-d2 frames]
   (into {}

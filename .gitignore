@@ -5,4 +5,3 @@
 .lsp/
 target/
 deps.local.edn
-*.html

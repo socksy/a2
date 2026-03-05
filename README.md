@@ -4,6 +4,8 @@ Interactive architecture diagrams. Define components and message flows in EDN, g
 
 Uses [D2](https://d2lang.com) for diagram rendering.
 
+[![Example output](examples/screenshot.png)](https://htmlpreview.github.io/?https://github.com/socksy/a2/blob/main/examples/simple.html)
+
 ## Install
 
 Download the latest archive for your platform from [Releases](https://github.com/benharri/a2/releases), extract it, and put both `a2` and `d2` somewhere on your PATH:
