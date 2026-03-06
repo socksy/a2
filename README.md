@@ -63,3 +63,12 @@ bb generate examples/simple.edn
 ```
 
 Phases and steps are positional — steps at index 0 belong to phase 0. Nodes that appear in `:from`/`:to` become sequence diagram participants. The rest are path shortcuts for use in `:set`, `:lock`, etc. The `:base` D2 file defines the static architecture layout.
+
+### Escaping
+
+`$` in labels and cell values is escaped automatically (`$` → `\$`). Use `^:raw` metadata to skip escaping:
+
+```clojure
+{:from :Client :to :API :message "$100"}
+{:from :Client :to :API :message ^:raw "${env.host}"}
+```

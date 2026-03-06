@@ -21,6 +21,14 @@
         (str (node-path nodes prefix-kw) "." (subs s (inc i)))
         s))))
 
+(defn- d2-escape
+  "Escape characters that D2 interprets inside quoted strings.
+   Values with ^:raw metadata pass through unescaped."
+  [s]
+  (if (:raw (meta s))
+    s
+    (str/replace s "$" "\\$")))
+
 (defn- resolve-state [nodes state]
   (into []
     (mapcat (fn [[k v]]
@@ -85,7 +93,7 @@
     (node-path nodes (:from arrow))
     (d2-arrow-str (:type arrow))
     (node-path nodes (:to arrow))
-    (or (:label arrow) (:message arrow))
+    (d2-escape (or (:label arrow) (:message arrow)))
     (name (or (:color arrow) (:color phase) :blue))))
 
 (defn- html-escape [s]
@@ -130,7 +138,7 @@
                             (:extra a)
                             (into (mapv (fn [x]
                                           (format "%s -> %s: \"%s\" {\n  class: [edge; %s]\n}"
-                                            (:from-path x) (:to-path x) (:label x)
+                                            (:from-path x) (:to-path x) (d2-escape (:label x))
                                             (name (or (:color x) (:color phase) :blue))))
                                         (:extra a)))))
                         group))))
@@ -240,7 +248,7 @@
                                     (apply str (repeat (+ 2 (* 2 (cond (:alt-begin arrow) 1
                                                                         (and (:alt-branch arrow) (not (:alt-begin arrow))) 2
                                                                         :else (:alt-depth acc 0)))) \space))
-                                    qualified-source qualified-target (:message arrow)))
+                                    qualified-source qualified-target (d2-escape (:message arrow))))
                             (:alt-end arrow)
                             (into (if (or (and (:alt-branch arrow) (not (:alt-begin arrow)))
                                           (>= (:alt-depth acc 0) 2))
@@ -401,7 +409,7 @@
          (fn [d2 full-path widest-val]
            (if-let [{:keys [abs-start abs-end value]} (find-table-field d2 full-path)]
              (if (> (count widest-val) (count value))
-               (str (subs d2 0 abs-start) widest-val (subs d2 abs-end))
+               (str (subs d2 0 abs-start) (d2-escape widest-val) (subs d2 abs-end))
                d2)
              d2))
          base-d2)))
