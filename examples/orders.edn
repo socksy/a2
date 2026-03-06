@@ -1,0 +1,146 @@
+{:base "orders_base.d2"
+ :theme 4
+ :layout "elk"
+
+ :participants [:Customer :GW :Svc :Pay :Webhook :PG :Redis :Kafka :Fulfill :Notify]
+
+ :nodes
+ {:Customer  "Customer"
+  :Webhook   "Webhook"
+  :GW        {:path "Platform.GW" :label "API Gateway"}
+  :Svc       {:path "Platform.Inner.Upper.Services.Svc" :label "OrderService"}
+  :Pay       {:path "Platform.Inner.Upper.Services.Pay" :label "PaymentService"}
+  :Fulfill   {:path "Platform.Inner.Workers.Fulfill" :label "FulfillmentWorker"}
+  :Notify    {:path "Platform.Inner.Workers.Notify" :label "NotificationWorker"}
+  :PG        {:path "Platform.Inner.Upper.PG" :label "PostgreSQL"}
+  :Redis     {:path "Platform.Inner.Redis"}
+  :Kafka     "Platform.Inner.Kafka"
+  :PG.orders    "Platform.Inner.Upper.PG.orders"
+  :PG.inventory "Platform.Inner.Upper.PG.inventory"
+  :cart      "Platform.Inner.Redis.cart"}
+
+ :aliases
+ {:lock.inv   "Platform.Inner.Redis.Locks.lock_inventory"
+  :lock.order "Platform.Inner.Redis.Locks.lock_order"
+  :e1 "Platform.Inner.Kafka.e1"
+  :e2 "Platform.Inner.Kafka.e2"}
+
+ :phases
+ [{:color :blue  :title "Add to Cart"}
+  {:color :green :title "Checkout + Payment"}
+  {:color :mauve :title "Payment Confirmed"}
+  {:color :peach :title "Fulfillment"}
+  {:color :teal  :title "Notification"}]
+
+ :init
+ {:PG.inventory {:sku "SKU-7291" :product "Mechanical Keyboard" :qty "50" :reserved "0"}
+  :cart {:items "(empty)" :total "$0.00"}}
+
+ :steps
+ [;; Phase 0: Add to Cart
+  [{:from :Customer :to :GW :message "POST /cart/items {sku: SKU-7291, qty: 2}"}
+
+   {:from :GW :to :Svc :message "AddToCart(SKU-7291, qty=2)"}
+
+   {:from :Svc :to :lock.inv :message "LOCK inventory/SKU-7291"
+    :lock :lock.inv}
+
+   {:from :Svc :to :PG.inventory :message "SELECT qty, reserved"
+    :title "Check available stock (qty - reserved >= requested)"}
+
+   {:from :Svc :to :PG.inventory :message "UPDATE reserved += 2"
+    :set {:PG.inventory.reserved "2"}}
+
+   {:from :Svc :to :cart :message "HSET cart items, total"
+    :set {:cart {:items "SKU-7291 x2" :total "$339.98"}}}
+
+   {:from :Svc :to :lock.inv :message "UNLOCK inventory/SKU-7291"
+    :unlock :lock.inv}
+
+   {:from :GW :to :Customer :message "200 OK — cart updated"}]
+
+  ;; Phase 1: Checkout + Payment
+  [{:from :Customer :to :GW :message "POST /checkout"}
+
+   {:from :GW :to :Svc :message "Checkout()"}
+
+   {:from :Svc :to :lock.order :message "LOCK order/ord-b4e2..."
+    :lock :lock.order}
+
+   {:from :Svc :to :PG.orders :message "INSERT order (status=pending)"
+    :set {:PG.orders {:id "ord-b4e2..." :customer_id "cust-a8f3..." :status "pending" :total "$339.98" :stripe_pi "(none)"}}}
+
+   {:from :Svc :to :Pay :message "CreatePaymentIntent($339.98)"}
+
+   {:from :Pay :to :Pay :message "Stripe API — create intent"
+    :title "POST /v1/payment_intents {amount: 33998, currency: usd}"}
+
+   {:from :Pay :to :PG.orders :message "UPDATE stripe_pi = pi_3Qx..."
+    :set {:PG.orders.stripe_pi "pi_3Qx..."}}
+
+   {:from :Pay :to :Svc :message "client_secret"}
+
+   {:from :Svc :to :lock.order :message "UNLOCK order/ord-b4e2..."
+    :unlock :lock.order}
+
+   {:from :GW :to :Customer :message "200 OK — redirect to Stripe checkout"}]
+
+  ;; Phase 2: Payment Confirmed (webhook)
+  [{:from :Webhook :to :GW :message "payment_intent.succeeded"
+    :title "Stripe fires webhook — payment_intent.succeeded for pi_3Qx..."}
+
+   {:from :GW :to :Svc :message "HandlePaymentSuccess(pi_3Qx...)"}
+
+   {:from :Svc :to :lock.order :message "LOCK order/ord-b4e2..."
+    :lock :lock.order}
+
+   {:from :Svc :to :PG.orders :message "UPDATE status = paid"
+    :set {:PG.orders.status "paid"}}
+
+   {:from :Svc :to :lock.inv :message "LOCK inventory/SKU-7291"
+    :lock :lock.inv}
+
+   {:from :Svc :to :PG.inventory :message "UPDATE qty -= 2, reserved -= 2"
+    :set {:PG.inventory {:qty "48" :reserved "0"}}}
+
+   {:from :Svc :to :lock.inv :message "UNLOCK inventory/SKU-7291"
+    :unlock :lock.inv}
+
+   {:from :Svc :to :lock.order :message "UNLOCK order/ord-b4e2..."
+    :unlock :lock.order}
+
+   {:from :Svc :to :Kafka :message "Produce order.paid"
+    :show :e1
+    :set {:e1 {:order_id "ord-b4e2..." :event "order.paid"}}}
+
+   {:from :GW :to :Webhook :message "200 OK"}]
+
+  ;; Phase 3: Fulfillment
+  [{:from :Fulfill :to :Kafka :message "Consume order.paid"
+    :title "FulfillmentWorker consumes order.paid from Kafka"}
+
+   {:from :Fulfill :to :PG.orders :message "SELECT order + items"
+    :title "Load order details for packing slip"}
+
+   {:from :Fulfill :to :Fulfill :message "Generate shipping label"
+    :title "Generate shipping label via carrier API"}
+
+   {:from :Fulfill :to :PG.orders :message "UPDATE status = shipped"
+    :set {:PG.orders.status "shipped"}}
+
+   {:from :Fulfill :to :Kafka :message "Produce order.shipped"
+    :show :e2
+    :set {:e2 {:order_id "ord-b4e2..." :event "order.shipped"}}}]
+
+  ;; Phase 4: Notification
+  [{:from :Notify :to :Kafka :message "Consume order events"
+    :title "NotificationWorker consumes order.paid + order.shipped from Kafka"}
+
+   {:from :Notify :to :Notify :message "Render email template"
+    :title "Render shipping confirmation with tracking link"}
+
+   {:from :Notify :to :Customer :message "Email: Your order shipped! Track: 1Z999..."
+    :title "Send shipping confirmation email to customer"}
+
+   {:from :Notify :to :cart :message "DEL /cart/cust-a8f3..."
+    :set {:cart {:items "(empty)" :total "$0.00"}}}]]}

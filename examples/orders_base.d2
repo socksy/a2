@@ -1,0 +1,252 @@
+direction: down
+
+title: "Order Processing Pipeline" {
+  near: bottom-center
+  shape: text
+  style.font-size: 36
+  style.bold: true
+}
+
+classes: {
+  service: {
+    style.fill: "#ffffff"
+    style.stroke: "#4361ee"
+    style.stroke-width: 2
+    style.font-color: "#2d3142"
+    style.font-size: 20
+    style.bold: false
+  }
+  section: {
+    style.fill: "#f0f1f5"
+    style.border-radius: 12
+    style.font-color: "#2d3142"
+    style.bold: true
+  }
+  table: {
+    shape: sql_table
+    width: 50
+    style.fill: "#ffffff"
+    style.font-color: "#2d3142"
+  }
+  lock: {
+    shape: page
+    style.fill: "#f0f1f5"
+    style.stroke: "#9a9cb0"
+    style.font-color: "#9a9cb0"
+  }
+  topic-entry: {
+    shape: sql_table
+    style.fill: "#f0f1f5"
+    style.font-color: "#6b6d7b"
+    style.font-size: 13
+  }
+  edge: {
+    style.opacity: 0.2
+    style.stroke-width: 5
+  }
+  blue: {
+    style.stroke: "#4361ee"
+    style.font-color: "#4361ee"
+  }
+  green: {
+    style.stroke: "#2d936c"
+    style.font-color: "#2d936c"
+  }
+  mauve: {
+    style.stroke: "#7b2d8e"
+    style.font-color: "#7b2d8e"
+  }
+  peach: {
+    style.stroke: "#e76f51"
+    style.font-color: "#e76f51"
+  }
+  red: {
+    style.stroke: "#d62828"
+    style.font-color: "#d62828"
+  }
+  teal: {
+    style.stroke: "#0891b2"
+    style.font-color: "#0891b2"
+  }
+}
+
+Customer: "Customer\n(Browser)" {
+  shape: person
+  style.fill: "#ffffff"
+  style.stroke-width: 2
+  style.font-color: "#2d3142"
+  width: 120
+  height: 120
+}
+
+Webhook: "Stripe\nWebhook" {
+  shape: cloud
+  style.fill: "#ffffff"
+  style.stroke: "#2d936c"
+  style.stroke-width: 2
+  style.font-color: "#2d3142"
+  width: 160
+  height: 100
+}
+
+Platform: " " {
+  grid-columns: 2
+  horizontal-gap: 24
+  vertical-gap: 0
+  style: {
+    fill: "#f8f9fc"
+    stroke: "#d1d3de"
+    border-radius: 16
+    font-color: "#2d3142"
+  }
+
+  GW: "API\nGateway" {
+    class: service
+    style.stroke: "#2d3142"
+    style.font-size: 18
+    height: 800
+    width: 120
+  }
+
+  Inner: " " {
+    grid-columns: 1
+    grid-gap: 24
+    style: {
+      fill: "#f8f9fc"
+      stroke: "#f8f9fc"
+      border-radius: 0
+    }
+
+    Upper: " " {
+      grid-columns: 2
+      grid-gap: 24
+      style: {
+        fill: "#f8f9fc"
+        stroke: "#f8f9fc"
+        border-radius: 0
+      }
+
+      Services: "Services" {
+        class: section
+        style.stroke: "#4361ee"
+        grid-columns: 1
+        grid-gap: 16
+
+        Svc: "OrderService" {
+          class: service
+        }
+        Pay: "PaymentService\n(Stripe SDK)" {
+          class: service
+        }
+      }
+
+      PG: PostgreSQL {
+        grid-columns: 2
+        grid-gap: 16
+        style: {
+          fill: "#f0f1f5"
+          stroke: "#e76f51"
+          stroke-width: 2
+          font-color: "#2d3142"
+          border-radius: 8
+        }
+
+        orders: orders {
+          class: table
+          id: " "
+          customer_id: " "
+          status: " "
+          total: " "
+          stripe_pi: " "
+        }
+        inventory: inventory {
+          class: table
+          sku: " "
+          product: " "
+          qty: " "
+          reserved: " "
+        }
+      }
+    }
+
+    Kafka: "Kafka — orders" {
+      shape: queue
+      grid-rows: 1
+      grid-gap: 8
+      style: {
+        fill: "#ffffff"
+        stroke: "#2d936c"
+        stroke-width: 2
+        font-color: "#2d3142"
+        border-radius: 8
+        font-size: 20
+      }
+
+      e1: "offset 0" {
+        class: topic-entry
+        order_id: " "
+        event: " "
+      }
+      e2: "offset 1" {
+        class: topic-entry
+        order_id: " "
+        event: " "
+      }
+    }
+
+    Workers: " " {
+      grid-columns: 2
+      grid-gap: 24
+      style: {
+        fill: "#f8f9fc"
+        stroke: "#f8f9fc"
+        border-radius: 0
+      }
+
+      Fulfill: FulfillmentWorker {
+        class: service
+        style.stroke: "#6366f1"
+      }
+      Notify: NotificationWorker {
+        class: service
+        style.stroke: "#6366f1"
+      }
+    }
+
+    Redis: Redis {
+      grid-columns: 2
+      grid-gap: 16
+      style: {
+        fill: "#f0f1f5"
+        stroke: "#e76f51"
+        stroke-width: 2
+        font-color: "#2d3142"
+        border-radius: 8
+      }
+
+      cart: "/cart/cust-a8f3..." {
+        class: table
+        items: " "
+        total: " "
+      }
+
+      Locks: "Distributed Locks" {
+        grid-columns: 2
+        grid-gap: 8
+        style: {
+          fill: "#e8e9f0"
+          stroke: "#7b2d8e"
+          border-radius: 8
+          font-color: "#2d3142"
+        }
+
+        lock_inventory: "/locks/inv/SKU-7291" {
+          class: lock
+        }
+        lock_order: "/locks/ord/ord-b4e2..." {
+          class: lock
+        }
+      }
+    }
+  }
+}
