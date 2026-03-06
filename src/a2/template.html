@@ -246,24 +246,39 @@ body {
     }
   });
 
+  // D2 sql_tables render as a <g> with child texts: [header, name, val, type, name, val, type, ...]
+  function parseTable(g) {
+    var texts = Array.from(g.children).filter(function(c) { return c.tagName === 'text'; });
+    var fields = {};
+    for (var i = 1; i + 1 < texts.length; i += 3)
+      fields[texts[i].textContent.trim()] = texts[i + 1];
+    return { g: g, name: texts[0].textContent.trim(), fields: fields };
+  }
+
+  var tables = {};
+  archSvg.querySelectorAll('rect.class_header').forEach(function(rect) {
+    if (rect.parentElement && rect.parentElement.tagName === 'g') {
+      var t = parseTable(rect.parentElement);
+      tables[t.name] = t;
+    }
+  });
+
+  function cellLookup(path) {
+    var parts = path.split('.');
+    var table = tables[parts[parts.length - 2]];
+    return table && table.fields[parts[parts.length - 1]];
+  }
+
   var cellTexts = {};
   Object.keys(D.initialCells).forEach(function(fp) {
-    var g = findGroup(archSvg, btoa(fp));
-    if (g) {
-      var t = g.querySelector('text');
-      if (t) cellTexts[fp] = t;
-    }
+    var el = cellLookup(fp);
+    if (el) cellTexts[fp] = el;
   });
 
   var tableGroups = {};
   (D.blankTables || []).forEach(function(tp) {
-    var els = [findGroup(archSvg, btoa(tp))];
-    Object.keys(D.initialCells).forEach(function(fp) {
-      if (fp.indexOf(tp + '.') === 0) els.push(findGroup(archSvg, btoa(fp)));
-    });
-    els = els.filter(Boolean);
-    tableGroups[tp] = els;
-    els.forEach(function(e) { e.style.opacity = '0'; });
+    var t = tables[tp.split('.').pop()];
+    if (t) { tableGroups[tp] = [t.g]; t.g.style.opacity = '0'; }
   });
 
   // Cache :show node <g> elements (start hidden)
