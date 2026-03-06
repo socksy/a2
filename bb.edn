@@ -1,11 +1,15 @@
 {:paths ["src"]
  :min-bb-version "1.0.0"
  :deps {com.lambdaisland/launchpad {:mvn/version "0.46.204-alpha"}
-        hiccup/hiccup {:mvn/version "2.0.0-RC3"}}
+        hiccup/hiccup {:mvn/version "2.0.0-RC3"}
+        metosin/malli {:mvn/version "0.17.0"}}
  :tasks
  {generate {:doc "Generate interactive HTML: EDN → D2 → HTML"
             :requires ([a2.core :as core])
-            :task (apply core/-main *command-line-args*)}
+            :task (try (apply core/-main *command-line-args*)
+                       (catch clojure.lang.ExceptionInfo e
+                         (binding [*out* *err*] (println (ex-message e)))
+                         (System/exit 1)))}
   dev {:doc "Start Launchpad REPL"
        :task (do (require '[lambdaisland.launchpad :as lp])
                  (lp/main {}))}

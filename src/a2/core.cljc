@@ -1,10 +1,11 @@
 (ns a2.core
-  (:require [babashka.process :as p]
+  (:require [a2.errors :as errors]
+            [babashka.process :as p]
             #?(:bb [cheshire.core :as json]
                :clj [clojure.data.json :as json])
-            [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [edamame.core :as eda])
   (:import [java.util Base64]
            #?@(:clj [[java.lang ProcessHandle]]))
   #?(:clj (:gen-class)))
@@ -564,7 +565,13 @@
       (.replace "{{N}}" (str (count (:frames sync))))))
 
 (defn run [input-path output-path]
-  (let [raw      (edn/read-string (slurp input-path))
+  (let [source   (slurp input-path)
+        raw      (try (eda/parse-string source {:all true})
+                   (catch Exception e
+                     (throw (ex-info (str "Failed to parse " input-path ":\n" (ex-message e))
+                                    {:file input-path}))))
+        _        (errors/validate raw source input-path)
+        _        (errors/validate-refs raw source input-path)
         dir      (some-> (io/file input-path) .getParentFile)
         doc      (parse raw)
         d2-opts  (select-keys raw [:layout :theme])
@@ -589,7 +596,7 @@
 
 (defn -main [& args]
   (when-not (first args)
-    (println "Usage: bb generate <input.edn> [output.html]")
+    (binding [*out* *err*] (println "Usage: bb generate <input.edn> [output.html]"))
     (System/exit 1))
   (let [[input output] args]
     (run input (or output (str/replace input #"\.[^.]+$" ".html")))))
