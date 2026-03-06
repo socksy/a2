@@ -565,6 +565,8 @@
       (.replace "{{N}}" (str (count (:frames sync))))))
 
 (defn run [input-path output-path]
+  (when-not (.exists (io/file input-path))
+    (throw (ex-info (str "file not found: " input-path) {:file input-path})))
   (let [source   (slurp input-path)
         raw      (try (eda/parse-string source {:all true})
                    (catch Exception e
@@ -595,8 +597,13 @@
     (println (str "Written: " output-path))))
 
 (defn -main [& args]
-  (when-not (first args)
-    (binding [*out* *err*] (println "Usage: bb generate <input.edn> [output.html]"))
-    (System/exit 1))
-  (let [[input output] args]
-    (run input (or output (str/replace input #"\.[^.]+$" ".html")))))
+  (cond
+    (contains? #{nil "--help" "-h"} (first args))
+    (println "Usage: bb generate <input.edn> [output.html]")
+
+    (= (first args) "--version")
+    (println (str "a2 " (str/trim (slurp (io/resource "VERSION")))))
+
+    :else
+    (let [[input output] args]
+      (run input (or output (str/replace input #"\.[^.]+$" ".html"))))))

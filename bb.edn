@@ -7,12 +7,16 @@
  {generate {:doc "Generate interactive HTML: EDN → D2 → HTML"
             :requires ([a2.core :as core])
             :task (try (apply core/-main *command-line-args*)
-                       (catch clojure.lang.ExceptionInfo e
+                       (catch Exception e
                          (binding [*out* *err*] (println (ex-message e)))
                          (System/exit 1)))}
   dev {:doc "Start Launchpad REPL"
        :task (do (require '[lambdaisland.launchpad :as lp])
                  (lp/main {}))}
+  tag {:doc "Git tag with version from VERSION file"
+       :task (let [v (str "v" (clojure.string/trim (slurp (clojure.java.io/resource "VERSION"))))]
+               (shell "git" "tag" v)
+               (println (str "Tagged " v)))}
   mcp {:doc "Start bb-clj MCP server on port 8787"
        :task (babashka.tasks/shell {:dir (str (System/getProperty "user.home") "/code/mcp-bb-clj")}
                                    "bb" "-m" "mcp-bb-clj.core" "8787")}}}

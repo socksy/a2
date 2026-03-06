@@ -23,7 +23,7 @@
 
         packages.default = pkgs.writeShellScriptBin "a2" ''
           export PATH="${pkgs.lib.makeBinPath [ pkgs.d2 ]}:$PATH"
-          exec ${pkgs.babashka}/bin/bb -cp ${self}/src -m a2.core "$@"
+          exec ${pkgs.babashka}/bin/bb --config ${self}/bb.edn -m a2.core "$@"
         '';
       });
 }
