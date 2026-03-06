@@ -54,9 +54,6 @@
    {:from :Svc :to :cart :message "HSET cart items, total"
     :set {:cart {:items "SKU-7291 x2" :total "$339.98"}}}
 
-   {:from :Svc :to :lock.inv :message "UNLOCK inventory/SKU-7291"
-    :unlock :lock.inv}
-
    {:from :GW :to :Customer :message "200 OK — cart updated"}]
 
   ;; Phase 1: Checkout + Payment
@@ -80,9 +77,6 @@
 
    {:from :Pay :to :Svc :message "client_secret"}
 
-   {:from :Svc :to :lock.order :message "UNLOCK order/ord-b4e2..."
-    :unlock :lock.order}
-
    {:from :GW :to :Customer :message "200 OK — redirect to Stripe checkout"}]
 
   ;; Phase 2: Payment Confirmed (webhook)
@@ -102,12 +96,6 @@
 
    {:from :Svc :to :PG.inventory :message "UPDATE qty -= 2, reserved -= 2"
     :set {:PG.inventory {:qty "48" :reserved "0"}}}
-
-   {:from :Svc :to :lock.inv :message "UNLOCK inventory/SKU-7291"
-    :unlock :lock.inv}
-
-   {:from :Svc :to :lock.order :message "UNLOCK order/ord-b4e2..."
-    :unlock :lock.order}
 
    {:from :Svc :to :Kafka :message "Produce order.paid"
     :show :e1
