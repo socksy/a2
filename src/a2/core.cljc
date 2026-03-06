@@ -77,13 +77,24 @@
      :init (when init (resolve-state nodes init))
      :arrows arrows}))
 
-(def ^:private phase-fills
+(defn- dark-theme? [theme]
+  (contains? #{200 201} (or theme 200)))
+
+(def ^:private phase-fills-dark
   {"blue"  "#1e2d4a"
    "green" "#1e3a2d"
    "mauve" "#2d1e4a"
    "peach" "#3a2d1e"
    "red"   "#3a1e1e"
    "teal"  "#1e3a3a"})
+
+(def ^:private phase-fills-light
+  {"blue"  "#e8edfb"
+   "green" "#e6f4ed"
+   "mauve" "#f0e8f8"
+   "peach" "#fbeee8"
+   "red"   "#fbe8e8"
+   "teal"  "#e8f5f5"})
 
 (defn- d2-arrow-str [arrow-type]
   (if (#{"<->" "<<->>"} arrow-type) "<->" "->"))
@@ -222,7 +233,7 @@
 
 (defn- seq-d2-text
   "Sequence diagram D2 text + per-step base64 edge classes + lock spans."
-  [doc]
+  [doc dark?]
   (let [nodes (:nodes doc)
         participants (:participants doc)
         {:keys [phase-lines raw-edges lock-spans]}
@@ -302,7 +313,8 @@
                    [(format "# -- Phase %s: %s --" phase-idx title)
                     (format "\"%s. %s\": {" phase-idx title)
                     (format "  style.fill: \"%s\""
-                      (get phase-fills (name (:color phase :blue)) "#2a2d3f"))
+                      (get (if dark? phase-fills-dark phase-fills-light)
+                        (name (:color phase :blue)) (if dark? "#2a2d3f" "#f0f1f5")))
                     ""
                     (str/join "\n" (get phase-lines phase-idx))
                     "}" ""]))
@@ -360,8 +372,8 @@
 
 (defn generate-d2
   "Parsed doc + base D2 → {:arch-d2 :seq-d2 :sync}"
-  [doc base-d2]
-  (let [{:keys [d2 seq-edges lock-spans]} (seq-d2-text doc)]
+  [doc base-d2 {:keys [theme]}]
+  (let [{:keys [d2 seq-edges lock-spans]} (seq-d2-text doc (dark-theme? theme))]
     {:arch-d2 (arch-d2-text doc base-d2)
      :seq-d2 d2
      :sync {:frames (build-frames doc)
@@ -505,40 +517,46 @@
               [path value])))
     (into #{} (comp (mapcat :set) (map first)) frames)))
 
-(def ^:private catppuccin
+(def ^:private palette-dark
   {"blue" "#8aadf4" "green" "#a6da95" "mauve" "#c6a0f6"
    "peach" "#f5a97f" "red" "#ed8796" "teal" "#8bd5ca"})
+
+(def ^:private palette-light
+  {"blue" "#4361ee" "green" "#2d936c" "mauve" "#7b2d8e"
+   "peach" "#e76f51" "red" "#d62828" "teal" "#0891b2"})
 
 (def ^:private html-template
   (delay (slurp (io/resource "a2/template.html"))))
 
-(defn- sync->js-data [{:keys [frames seq-edges edge-map edge-labels blank-tables initial-cells]}]
-  {:allArchEdges (vec (distinct (vals edge-map)))
-   :edgeLabels (or edge-labels {})
-   :initialCells (or initial-cells {})
-   :blankTables (->> (keys (or initial-cells {}))
-                     (map #(str/join "." (butlast (str/split % #"\."))))
-                     distinct
-                     (filterv #(contains? (or blank-tables #{})
-                                          (peek (str/split % #"\.")))))
-   :seqEdges (or seq-edges [])
-   :frames (mapv
-             (fn [{:keys [title color arch-edge lock unlock set init show title-color extra-edges]}]
-               (cond->
-                 {:title title :titleColor (or title-color (get catppuccin color "#8aadf4"))}
-                 arch-edge   (assoc :archEdge arch-edge)
-                 extra-edges (assoc :extraEdges extra-edges)
-                 lock        (assoc :locks (mapv #(vector % (get catppuccin color "#8aadf4")) lock))
+(defn- sync->js-data [{:keys [frames seq-edges edge-map edge-labels blank-tables initial-cells palette]}]
+  (let [pal (or palette palette-dark)]
+    {:allArchEdges (vec (distinct (vals edge-map)))
+     :edgeLabels (or edge-labels {})
+     :initialCells (or initial-cells {})
+     :blankTables (->> (keys (or initial-cells {}))
+                       (map #(str/join "." (butlast (str/split % #"\."))))
+                       distinct
+                       (filterv #(contains? (or blank-tables #{})
+                                            (peek (str/split % #"\.")))))
+     :seqEdges (or seq-edges [])
+     :frames (mapv
+               (fn [{:keys [title color arch-edge lock unlock set init show title-color extra-edges]}]
+                 (cond->
+                   {:title title :titleColor (or title-color (get pal color "#8aadf4"))}
+                   arch-edge   (assoc :archEdge arch-edge)
+                   extra-edges (assoc :extraEdges extra-edges)
+                   lock        (assoc :locks (mapv #(vector % (get pal color "#8aadf4")) lock))
                  unlock      (assoc :unlocks unlock)
                  set         (assoc :cells set)
                  init        (assoc :init init)
                  show        (assoc :show show)))
-             frames)})
+             frames)}))
 
 (defn build-html
   "Two SVGs + sync data → interactive split-pane HTML."
-  [arch-svg seq-svg sync]
+  [arch-svg seq-svg sync {:keys [theme]}]
   (-> @html-template
+      (.replace "{{MODE}}" (if (dark-theme? theme) "dark" "light"))
       (.replace "{{SEQ_SVG}}" seq-svg)
       (.replace "{{ARCH_SVG}}" arch-svg)
       (.replace "{{DATA_JSON}}" (str/replace (json-str (sync->js-data sync))
@@ -552,19 +570,21 @@
         d2-opts  (select-keys raw [:layout :theme])
         raw-base (slurp (if dir (io/file dir (:base doc)) (:base doc)))
         base     (pad-table-cells raw-base doc)
-        {:keys [arch-d2 seq-d2 sync]} (generate-d2 doc base)
+        {:keys [arch-d2 seq-d2 sync]} (generate-d2 doc base d2-opts)
         {:keys [edge-map edge-labels]} (build-edge-info arch-d2)]
     (when-let [f (:regular @mono-fonts)]
       (binding [*out* *err*] (println (str "Font: " (.getName (io/file f))))))
-    (->> (build-html
-           (d2->svg (strip-edge-labels arch-d2) d2-opts)
-           (d2->svg seq-d2 d2-opts)
-           (assoc sync
-             :edge-map edge-map
-             :edge-labels edge-labels
-             :blank-tables (find-blank-tables raw-base)
-             :initial-cells (parse-initial-cell-values raw-base (:frames sync))))
-         (spit output-path))
+    (spit output-path
+      (build-html
+        (d2->svg (strip-edge-labels arch-d2) d2-opts)
+        (d2->svg seq-d2 d2-opts)
+        (assoc sync
+          :edge-map edge-map
+          :edge-labels edge-labels
+          :blank-tables (find-blank-tables raw-base)
+          :initial-cells (parse-initial-cell-values raw-base (:frames sync))
+          :palette (when-not (dark-theme? (:theme d2-opts)) palette-light))
+        d2-opts))
     (println (str "Written: " output-path))))
 
 (defn -main [& args]
