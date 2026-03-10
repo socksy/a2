@@ -4,8 +4,7 @@
             #?(:bb [cheshire.core :as json]
                :clj [clojure.data.json :as json])
             [clojure.java.io :as io]
-            [clojure.string :as str]
-            [edamame.core :as eda])
+            [clojure.string :as str])
   (:import [java.util Base64]
            #?@(:clj [[java.lang ProcessHandle]]))
   #?(:clj (:gen-class)))
@@ -568,11 +567,7 @@
   (when-not (.exists (io/file input-path))
     (throw (ex-info (str "file not found: " input-path) {:file input-path})))
   (let [source   (slurp input-path)
-        raw      (try (eda/parse-string source {:all true})
-                   (catch Exception e
-                     (throw (ex-info (str "Failed to parse " input-path ":\n" (ex-message e))
-                                    {:file input-path}))))
-        _        (errors/validate raw source input-path)
+        raw      (errors/parse-and-validate source input-path)
         _        (errors/validate-refs raw source input-path)
         dir      (some-> (io/file input-path) .getParentFile)
         doc      (parse raw)
@@ -599,7 +594,9 @@
 (defn -main [& args]
   (cond
     (contains? #{nil "--help" "-h"} (first args))
-    (println "Usage: bb generate <input.edn> [output.html]")
+    (println (str "Usage: "
+                   (if (System/getProperty "babashka.task") "bb generate" "a2")
+                   " <input.edn> [output.html]"))
 
     (= (first args) "--version")
     (println (str "a2 " (str/trim (slurp (io/resource "VERSION")))))

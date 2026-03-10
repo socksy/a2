@@ -1,7 +1,7 @@
 (ns a2.errors
   (:require [clojure.string :as str]
-            [malli.core :as m]
-            [malli.error :as me]))
+            [ifu.core :as ifu]
+            [ifu.malli :as ifu-malli]))
 
 (def D2Path [:re {:error/message ".d2 file path"} #".*\.d2$"])
 
@@ -51,76 +51,10 @@
    [:participants {:optional true} [:vector :keyword]]
    [:aliases {:optional true} [:map-of :keyword :string]]])
 
-(defn- colorize [s code]
-  (str "\033[" code "m" s "\033[0m"))
+(def validate-document (ifu-malli/validator Document))
 
-(defn- source-line [source row]
-  (nth (str/split source #"\n" -1) (dec row) ""))
-
-(defn- pointer [col len]
-  (str (apply str (repeat (dec col) \space)) (apply str (repeat (max 1 len) \^))))
-
-(defn- render [{:keys [file source row col end-col message hint]}]
-  (let [line (source-line source row)
-        gw (count (str row))]
-    (str (colorize "error" "1;31") ": " (colorize message "1") "\n"
-         (colorize "  -->" "36") " " file ":" row ":" col "\n"
-         (apply str (repeat (+ gw 2) \space)) (colorize "│" "36") "\n"
-         " " row " " (colorize "│" "36") " " line "\n"
-         (apply str (repeat (+ gw 2) \space)) (colorize "│" "36") " "
-         (colorize (pointer col (- (or end-col (inc col)) col)) "31")
-         (when hint (str " " hint)) "\n")))
-
-(defn- meta-at [parsed path]
-  (reduce
-    (fn [form seg]
-      (cond
-        (and (map? form) (keyword? seg)) (get form seg)
-        (and (sequential? form) (int? seg)) (nth form seg nil)
-        :else nil))
-    parsed path))
-
-(defn- fmt-path [path]
-  (if (= 1 (count path))
-    (str (first path))
-    (str "[" (str/join " " (map str path)) "]")))
-
-(defn- describe-schema [schema]
-  (case (m/type schema)
-    :enum (str "one of " (str/join ", " (m/children schema)))
-    :string "string"
-    :keyword "keyword"
-    :int "integer"
-    :boolean "boolean"
-    :map "map"
-    :vector "vector"
-    (or (-> schema m/properties :error/message)
-        (name (m/type schema)))))
-
-(defn- error-message [err]
-  (let [path (:in err)]
-    (if (= (:type err) :malli.core/missing-key)
-      (str "missing required key " (last path))
-      (str "expected " (describe-schema (:schema err))
-           " for " (fmt-path path)
-           ", got " (pr-str (:value err))))))
-
-(defn validate [parsed source file]
-  (when-let [explanation (m/explain Document parsed)]
-    (let [diags
-          (mapv
-            (fn [err]
-              (let [path (:in err)
-                    form (when (seq path) (meta-at parsed path))
-                    parent (when (> (count path) 1) (meta-at parsed (butlast path)))
-                    m (or (meta form) (meta parent) (meta parsed))
-                    row (or (:row m) 1)
-                    col (or (:col m) 1)]
-                {:file file :source source :row row :col col
-                 :end-col (:end-col m)
-                 :message (error-message err)}))
-            (:errors explanation))]
-      (throw (ex-info (str/join "\n" (map render diags)) {:errors (:errors explanation)})))))
+(defn parse-and-validate [source file]
+  (ifu/parse source file validate-document))
 
 (defn- known-ref? [known ref]
   (or (get known ref)
@@ -138,7 +72,7 @@
       (let [m (or (meta step) (meta parsed))]
         (throw
           (ex-info
-            (render {:file file :source source
+            (ifu/render {:file file :source source
                      :row (or (:row m) 1) :col (or (:col m) 1) :end-col (:end-col m)
                      :message (str "unknown node " ref)
                      :hint (str "not defined in :nodes or :aliases")})

@@ -2,7 +2,10 @@
  :min-bb-version "1.0.0"
  :deps {com.lambdaisland/launchpad {:mvn/version "0.46.204-alpha"}
         hiccup/hiccup {:mvn/version "2.0.0-RC3"}
-        metosin/malli {:mvn/version "0.17.0"}}
+        metosin/malli {:mvn/version "0.17.0"}
+        io.github.socksy/ifu {:git/url "https://github.com/socksy/ifu.git"
+                              :git/tag "v0.3.0"
+                              :git/sha "cd7ef96"}}
  :tasks
  {generate {:doc "Generate interactive HTML: EDN → D2 → HTML"
             :requires ([a2.core :as core])
