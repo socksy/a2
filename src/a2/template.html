@@ -259,7 +259,22 @@ body {
   archSvg.querySelectorAll('rect.class_header').forEach(function(rect) {
     if (rect.parentElement && rect.parentElement.tagName === 'g') {
       var t = parseTable(rect.parentElement);
-      tables[t.name] = t;
+      // Extract D2 key from the grandparent <g>'s base64-encoded class.
+      // D2 renders tables as: <g class="BASE64 table"><g class="shape">...
+      // The base64 decodes to the full D2 path; last segment is the key.
+      var gp = rect.parentElement.parentElement;
+      var key = t.name;
+      if (gp && gp.tagName === 'g') {
+        var cls = (gp.getAttribute('class') || '').split(' ')[0];
+        if (cls) {
+          try {
+            var decoded = atob(cls);
+            var seg = decoded.split('.').pop();
+            if (seg) key = seg;
+          } catch(e) {}
+        }
+      }
+      tables[key] = t;
     }
   });
 
